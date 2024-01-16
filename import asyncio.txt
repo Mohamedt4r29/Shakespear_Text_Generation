@@ -1,0 +1,210 @@
+import asyncio
+import tkinter as tk
+from tkinter import Entry, Frame, Text, Scrollbar, Label, Button, Scale, Canvas, CENTER, messagebox
+import threading
+import random
+from tkinter import messagebox
+import numpy as np
+from pyttsx3.engine import Engine
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Activation
+from tensorflow.keras.optimizers import RMSprop
+import pygame
+import pyttsx3
+import os
+from PIL import Image, ImageTk
+from tkinter import Canvas
+from tkinter import NW
+from PIL import Image, Image
+import threading
+import queue
+import spacy
+from PIL import Image, ImageTk
+import pyperclip
+from tkinter import filedialog
+from pytube import YouTube
+from moviepy.editor import VideoFileClip
+import openai
+
+
+class TextGenerator:
+    def __init__(self, file_url, seq_length=40, step_size=3):
+        '''
+        Initialize the TextGenerator with parameters and check if the model file exists.
+        If it does, load the model. Otherwise, load and process the text, build, train, and save the model.
+        '''
+        self.file_url = file_url
+        self.seq_length = seq_length
+        self.step_size = step_size
+        self.text = None
+        self.characters = None
+        self.char_to_index = None
+        self.index_to_char = None
+        self.model = None
+
+        # Check if the model file exists
+        import os
+        model_file = 'textgenerator.model'
+        if os.path.exists(model_file):
+            self.load_model()
+        else:
+            self.load_text()
+            self.process_text()
+            if self.model is None:
+                self.build_model()
+                x, y = self.generate_training_data()
+                self.train_model(x, y)
+                self.save_model()
+
+    def load_text(self):
+        '''
+        Load text data from the specified file URL, decode it, and extract a portion for processing.
+        '''
+        filepath = tf.keras.utils.get_file('shakespeare.txt', self.file_url)
+        self.text = open(filepath, 'rb').read().decode(encoding='utf-8').lower()
+        self.text = self.text[300000:800000]
+
+    def process_text(self):
+        '''
+        Process the loaded text by identifying unique characters and creating character-to-index and index-to-character mappings.
+        '''
+        self.characters = sorted(set(self.text))
+        self.char_to_index = dict((c, i) for i, c in enumerate(self.characters))
+        self.index_to_char = dict((i, c) for i, c in enumerate(self.characters))
+
+    def build_model(self):
+        '''
+        Build an LSTM-based neural network model for text generation.
+        '''
+        model = Sequential()
+        model.add(LSTM(128, input_shape=(self.seq_length, len(self.characters))))
+        model.add(Dense(len(self.characters)))
+        model.add(Activation('softmax'))
+
+        optimizer = RMSprop(learning_rate=0.01)
+        model.compile(loss='categorical_crossentropy', optimizer=optimizer)
+
+        self.model = model
+
+        return model
+
+    def train_model(self, x, y, batch_size=256, epochs=4):
+        '''
+        Train the model using the provided training data (x, y).
+        '''
+        self.model.fit(x, y, batch_size=batch_size, epochs=epochs)
+
+    def save_model(self, model_name='textgenerator.model'):
+        '''
+        Save the trained model to a file.
+        '''
+        self.model.save(model_name)
+
+    def load_model(self, model_name='textgenerator.model'):
+        '''
+        Load a pre-trained model from a file.
+        '''
+        self.model = tf.keras.models.load_model(model_name)
+
+    def sample(self, preds, temperature=1.0):
+        '''
+        Helper function to sample an index from a probability array.
+        '''
+        preds = np.asarray(preds).astype('float64')
+        preds = np.log(preds) / temperature
+        exp_preds = np.exp(preds)
+        preds = exp_preds / np.sum(exp_preds)
+        probas = np.random.multinomial(1, preds, 1)
+        return np.argmax(probas)
+
+    def generate_text(self, length, temperature):
+        '''
+        Generate text of the specified length with a given temperature.
+        '''
+        start_index = random.randint(0, len(self.text) - self.seq_length - 1)
+        generated = ''
+        sentence = self.text[start_index: start_index + self.seq_length]
+        generated += sentence
+        for _ in range(length):
+            x = np.zeros((1, self.seq_length, len(self.characters)))
+            for t, character in enumerate(sentence):
+                x[0, t, self.char_to_index[character]] = 1
+
+            predictions = self.model.predict(x, verbose=0)[0]
+            next_index = self.sample(predictions, temperature)
+            next_character = self.index_to_char[next_index]
+
+            generated += next_character
+            sentence = sentence[1:] + next_character
+        return generated
+
+    def generate_training_data(self):
+        '''
+        Placeholder for generating training data (x, y). To be implemented as needed.
+        '''
+        x, y = None, None
+        return x, y
+
+
+class TextGeneratorGUI:
+    def __init__(self, master):
+        '''
+        Initialize the TextGeneratorGUI with various components and features.
+        '''
+        self.master = master
+        master.title("Text Generator GUI")
+        self.tts_thread = None
+        self.tts_queue = queue.Queue()
+        self.nlp = spacy.load('en_core_web_sm')
+        self.text_generator = TextGenerator('https://storage.googleapis.com/download.tensorflow.org/data/shakespeare.txt')
+        self.music_playing = False
+        self.poem_reading = False
+        self.engine = pyttsx3.init()
+        self.engine.setProperty('rate', 150)
+        self.engine.setProperty('volume', 1.0)
+        pygame.mixer.init()
+        self.hello_sound = pygame.mixer.Sound("hello_sound.wav")
+        self.play_hello_sound()
+
+        # ... (omitting GUI initialization for brevity)
+
+    # ... (omitting other methods for brevity)
+
+    def complete_user_input(self):
+        '''
+        Complete user input using OpenAI GPT-3 asynchronously.
+        '''
+        user_input = self.user_input_entry.get()
+
+        # Check if the user input is long enough
+        if len(user_input) < 10:
+            messagebox.showwarning("Input Warning", "Please provide a longer input for better completion.")
+            return
+
+        # Perform text completion using OpenAI GPT-3 asynchronously
+        asyncio.run(self.complete_with_gpt3_async(user_input))
+
+    async def complete_with_gpt3_async(self, input_text):
+        '''
+        Perform text completion using OpenAI GPT-3 asynchronously.
+        '''
+        try:
+            openai.api_key = 'your-api-key'
+
+            response = await asyncio.to_thread(
+                openai.Completion.create,
+                engine="text-davinci-002",
+                prompt=input_text,
+                max_tokens=150,
+                temperature=0.7,
+            )
+
+            completion_text = response.choices[0].text.strip()
+
+            self.output_text.insert(tk.END, "\n\nUser Input Completion:\n" + completion_text, "center")
+
+            self.user_input_entry.delete(0, tk.END)
+            self.user_input_entry.insert(0, completion_text)
+        except Exception as e:
+            messagebox.showerror("GPT-3 Error", f"An error occurred during GPT-3 completion: {e}")
