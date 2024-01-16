@@ -1,0 +1,11 @@
+asyncio
+numpy
+pyttsx3
+tensorflow
+pygame
+pyperclip
+spacy
+Pillow
+pytube
+moviepy
+openai
